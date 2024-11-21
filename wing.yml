@@ -1,0 +1,70 @@
+services:
+  sparkmaster:
+    image: pgigeruzh/spark:arm
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+    networks:
+     - spark
+    ports:
+     - "8080:8080"
+    volumes:
+     - "gfs:/gfs"
+    command: >
+      bash -c "apt install -y python3-numpy
+      && bin/spark-class org.apache.spark.deploy.master.Master"
+
+  sparkworker:
+    image: pgigeruzh/spark:arm
+    deploy:
+      replicas: 3
+      placement:
+        max_replicas_per_node: 1
+    networks:
+     - spark
+    ports:
+     - "8081:8081"
+    volumes:
+     - "gfs:/gfs"
+    command: >
+      bash -c "apt install -y python3-numpy
+      && bin/spark-class org.apache.spark.deploy.worker.Worker spark://sparkmaster:7077"
+  cassandra:
+    image: cassandra:3.11.3
+    volumes:
+      - "gfs:/gfs"
+    # - "gfs/project/data/cassandra/data:/var/lib/cassandra"
+    # - "gfs/project/data/cassandra/scripts:/scripts"
+    networks:
+     - spark
+    environment:
+     - CASSANDRA_CLUSTER_NAME=cscie63_cluster
+
+  zookeeper:
+    image: owlab/zookeeper-arm64
+    networks:
+     - spark
+
+  kafka:
+    image: wurstmeister/kafka
+    networks:
+      - spark
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: 192.168.8.2
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CREATE_TOPICS: "engine-stream:1:1,engine-alert:1:1"
+    depends_on:
+      - zookeeper
+
+networks:
+  spark:
+    driver: overlay
+    attachable: true
+
+volumes:
+  gfs:
+    external: true
+
+                                                                                                                                                                                                
