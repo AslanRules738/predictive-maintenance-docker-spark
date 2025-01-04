@@ -1,0 +1,73 @@
+pipeline {
+    agent none
+
+    stages {
+        stage('D1') {
+            agent { node 'berry' }
+            steps {
+                sh '''
+                    docker run -dt pgigeruzh/spark:arm
+                    docker exec $(docker ps | grep "pgigeruzh" | awk '{print $1}') apt install -y python3-numpy python3-kafka
+                    docker commit $(docker ps | grep "pgigeruzh" | awk '{print $1}') modspark
+                '''
+            }
+        }
+        stage('D2') {
+            agent { node 'crook' }
+            steps {
+                sh '''
+                    docker run -dt pgigeruzh/spark:arm
+                    docker exec $(docker ps | grep "pgigeruzh" | awk '{print $1}') apt install -y python3-numpy python3-kafka
+                    docker commit $(docker ps | grep "pgigeruzh" | awk '{print $1}') modspark
+                '''
+            }
+        }
+        stage('D3') {
+            agent { node 'boarding' }
+            steps {
+                sh '''
+                    docker run -dt pgigeruzh/spark:arm
+                    docker exec $(docker ps | grep "pgigeruzh" | awk '{print $1}') apt install -y python3-numpy python3-kafka
+                    docker commit $(docker ps | grep "pgigeruzh" | awk '{print $1}') modspark
+                '''
+            }
+        }
+        stage('Sim on Berry') {
+            agent { node 'berry' }
+            steps {
+                sh '''
+                    docker stack deploy -c /shared/steam/wing.yml wing
+                    sleep 5
+                    docker exec -d $(docker ps | grep "wing_sparkworker" | awk '{print $1}') /media/bin/start_engine_sim.sh 1
+                '''
+            }
+        }
+
+        stage('Monitor on Crook') {
+            agent { node 'crook' }
+            steps {
+                sh '''
+                    docker exec $(docker ps | grep "wing_sparkworker" | awk '{print $1}') /media/bin/start_engine_monitor.sh 150
+                '''
+            }
+        }
+
+        stage('Alert on Boarding') {
+            agent { node 'boarding' }
+            steps {
+                sh '''
+                    docker exec -d $(docker ps | grep "wing_sparkworker" | awk '{print $1}') /media/bin/start_engine_alert_monitor.sh
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully'
+        }
+        failure {
+            echo 'Pipeline failed'
+        }
+    }
+}
