@@ -1,41 +1,66 @@
 services:
   sparkmaster:
-    image: pgigeruzh/spark:arm
+    image: modspark
+    security_opt:
+      - no-new-privileges
     deploy:
       placement:
         constraints:
           - node.role == manager
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     networks:
      - spark
-    ports:
-     - "8080:8080"
+    cap_drop:
+     - ALL
     volumes:
-     - "gfs:/gfs"
-    command: >
-      bash -c "apt install -y python3-numpy
-      && bin/spark-class org.apache.spark.deploy.master.Master"
+     - "/shared/steam:/media:ro"
+    command:
+      bin/spark-class org.apache.spark.deploy.master.Master
 
   sparkworker:
-    image: pgigeruzh/spark:arm
+    image: modspark
+    security_opt:
+      - no-new-privileges
     deploy:
-      replicas: 3
+      replicas: 4
       placement:
         max_replicas_per_node: 1
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     networks:
      - spark
+    cap_drop:
+     - ALL
     ports:
      - "8081:8081"
     volumes:
-     - "gfs:/gfs"
+     - "/shared/steam:/media:ro"
     command: >
-      bash -c "apt install -y python3-numpy
-      && bin/spark-class org.apache.spark.deploy.worker.Worker spark://sparkmaster:7077"
+      bin/spark-class org.apache.spark.deploy.worker.Worker spark://sparkmaster:7077
+
   cassandra:
     image: cassandra:3.11.3
-    volumes:
-      - "gfs:/gfs"
-    # - "gfs/project/data/cassandra/data:/var/lib/cassandra"
-    # - "gfs/project/data/cassandra/scripts:/scripts"
+    security_opt:
+      - no-new-privileges
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     networks:
      - spark
     environment:
@@ -43,15 +68,35 @@ services:
 
   zookeeper:
     image: owlab/zookeeper-arm64
+    security_opt:
+      - no-new-privileges
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     networks:
      - spark
 
   kafka:
     image: wurstmeister/kafka
+    security_opt:
+      - no-new-privileges
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     networks:
       - spark
     environment:
-      KAFKA_ADVERTISED_HOST_NAME: 192.168.8.2
+      KAFKA_ADVERTISED_HOST_NAME: kafka
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_CREATE_TOPICS: "engine-stream:1:1,engine-alert:1:1"
@@ -62,9 +107,6 @@ networks:
   spark:
     driver: overlay
     attachable: true
-
-volumes:
-  gfs:
-    external: true
-
-                                                                                                                                                                                                
+  kafka:
+    driver: overlay
+    attachable: true
