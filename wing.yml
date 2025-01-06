@@ -19,7 +19,7 @@ services:
     cap_drop:
      - ALL
     volumes:
-     - "/var/jenkins/wales:/media:ro"
+     - "/var/jenkins/workspace/Wales:/media:ro"
     command:
       bin/spark-class org.apache.spark.deploy.master.Master
 
@@ -45,7 +45,7 @@ services:
     ports:
      - "8081:8081"
     volumes:
-     - "/var/jenkins/wales:/media:ro"
+     - "/var/jenkins/workspace/Wales:/media:ro"
     command: >
       bin/spark-class org.apache.spark.deploy.worker.Worker spark://sparkmaster:7077
 
