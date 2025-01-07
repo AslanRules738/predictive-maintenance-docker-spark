@@ -16,13 +16,18 @@ def main(broker, topic):
         broker (str): Broker in host:port format.
         topic (str): Topic to listen on.
     """
-    consumer = KafkaConsumer(topic, bootstrap_servers=broker)
+    consumer = KafkaConsumer(
+        topic,
+        bootstrap_servers=broker,
+        auto_offset_reset='latest',  # Ensure we get new messages
+        enable_auto_commit=True
+    )
+    
+    print("Consumer initialized and waiting for message...")
     
     # Get the first message and exit
-    try:
-        msg = next(consumer)
+    for msg in consumer:
         print("We received the alert: {}: {}".format(datetime.now(), msg.value))
-    finally:
         consumer.close()
         sys.exit(0)
 
