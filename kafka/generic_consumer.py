@@ -20,7 +20,7 @@ def main(broker, topic):
     consumer = KafkaConsumer(topic, bootstrap_servers=broker)
     for msg in consumer:
         print("We received the alert: {}: {}".format( datetime.now(), msg.value))
-        break
+        #break
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
