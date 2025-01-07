@@ -14,7 +14,7 @@ from pyspark.ml.feature import MinMaxScalerModel
 from pyspark.ml.regression import AFTSurvivalRegressionModel
 
 
-ROOT_DIR = os.path.abspath('/shared/project/')
+ROOT_DIR = os.path.abspath('/media/')
 MODEL_DIR = ROOT_DIR + '/aft/models/'
 
 sys.path.append(ROOT_DIR)
