@@ -28,8 +28,8 @@ def main(broker, topic):
     # Get the first message and exit
     for msg in consumer:
         print("We received the alert: {}: {}".format(datetime.now(), msg.value))
-        consumer.close()
-        sys.exit(0)
+        #consumer.close()
+        #sys.exit(0)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
