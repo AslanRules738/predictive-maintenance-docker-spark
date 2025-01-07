@@ -7,20 +7,24 @@ python kafka/generic_consumer.py localhost:9092 engine_cycles
 import argparse
 from kafka import KafkaConsumer
 from datetime import datetime
-
+import sys
 
 def main(broker, topic):
-    """Main function that indefinately consumes messages from a Kafka topic.
+    """Main function that consumes a single message from a Kafka topic and exits.
 
     Args:
-        broker (str): Broke in host:port format.
+        broker (str): Broker in host:port format.
         topic (str): Topic to listen on.
     """
-
     consumer = KafkaConsumer(topic, bootstrap_servers=broker)
-    for msg in consumer:
-        print("We received the alert: {}: {}".format( datetime.now(), msg.value))
-        #break
+    
+    # Get the first message and exit
+    try:
+        msg = next(consumer)
+        print("We received the alert: {}: {}".format(datetime.now(), msg.value))
+    finally:
+        consumer.close()
+        sys.exit(0)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
