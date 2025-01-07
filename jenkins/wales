@@ -1,0 +1,23 @@
+pipeline {
+    agent none
+    stages {
+        stage('Clone Repository') {
+            matrix {
+                axes {
+                    axis {
+                        name 'AGENT_LABEL'
+                        values 'berry', 'crook', 'boarding'
+                    }
+                }
+                agent { label AGENT_LABEL }
+                stages {
+                    stage('Checkout') {
+                        steps {
+                            git branch: 'master', url: 'https://github.com/AslanRules738/predictive-maintenance-docker-spark.git'
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
