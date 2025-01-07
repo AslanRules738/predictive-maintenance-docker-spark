@@ -6,10 +6,11 @@ pipeline {
             agent { node 'berry' }
             steps {
                 sh '''
-                    docker stack deploy -c /shared/steam/wing.yml wing
+                    chmod -R 777 /var/jenkins/workspace/Wales
+                    docker stack deploy -c /var/jenkins/workspace/Wales/wing.yml wing
                     sleep 10
                     
-                    grype ${modspark} | echo > grypelog.txt
+                    #grype ${modspark} | echo > grypelog.txt
                 '''
             }
         }
@@ -27,6 +28,7 @@ pipeline {
             agent { node 'crook' }
             steps {
                 sh '''
+                    chmod -R 777 /var/jenkins/workspace/Wales
                     docker exec $(docker ps | grep "wing_sparkworker" | awk '{print $1}') /media/bin/start_engine_monitor.sh 150
                 '''
             }
@@ -36,6 +38,7 @@ pipeline {
             agent { node 'boarding' }
             steps {
                 sh '''
+                    chmod -R 777 /var/jenkins/workspace/Wales
                     docker exec -d $(docker ps | grep "wing_sparkworker" | awk '{print $1}') /media/bin/start_engine_alert_monitor.sh
                 '''
             }
