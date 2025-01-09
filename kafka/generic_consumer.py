@@ -4,7 +4,7 @@ Test consumer
 python kafka/generic_consumer.py localhost:9092 engine_cycles
 """
 
-import argparse
+import argparse, sys
 from kafka import KafkaConsumer
 from datetime import datetime
 
