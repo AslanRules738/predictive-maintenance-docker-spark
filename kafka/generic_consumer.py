@@ -20,6 +20,8 @@ def main(broker, topic):
     consumer = KafkaConsumer(topic, bootstrap_servers=broker)
     for msg in consumer:
         print("Alert Received: {}: {}".format( datetime.now(), msg.value))
+        consumer.close()
+        sys.exit(0)
 
 
 if __name__ == "__main__":
