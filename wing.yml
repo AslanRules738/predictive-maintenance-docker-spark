@@ -64,7 +64,7 @@ services:
      - CASSANDRA_CLUSTER_NAME=cscie63_cluster
 
   zookeeper:
-    image: apache/zookeeper
+    image: zookeeper
     security_opt:
       - no-new-privileges
     deploy:
