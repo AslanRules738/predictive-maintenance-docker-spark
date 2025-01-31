@@ -102,8 +102,8 @@ services:
 
 networks:
   spark:
-    driver: overlay
+    driver: bridge
     attachable: true
   kafka:
-    driver: overlay
+    driver: bridge
     attachable: true
