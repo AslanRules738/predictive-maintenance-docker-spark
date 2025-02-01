@@ -1,12 +1,9 @@
 services:
   sparkmaster:
-    image: apache/spark
+    image: sdesilva26/spark_master:latest
     security_opt:
       - no-new-privileges
     deploy:
-      placement:
-        constraints:
-          - node.role == manager
       resources:
         limits:
           cpus: '0.50'
@@ -21,10 +18,10 @@ services:
     volumes:
      - "/home/admin/workspace/England:/media:ro"
     command:
-      bin/spark-class org.apache.spark.deploy.master.Master
+      /spark/bin/spark-class org.apache.spark.deploy.master.Master
 
   sparkworker:
-    image: apache/spark
+    image: sdesilva26/spark_worker:latest
     security_opt:
       - no-new-privileges
     deploy:
@@ -44,7 +41,7 @@ services:
     volumes:
      - "/home/admin/workspace/England:/media:ro"
     command: >
-      bin/spark-class org.apache.spark.deploy.worker.Worker spark://sparkmaster:7077
+      /spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://sparkmaster:7077
 
   cassandra:
     image: cassandra:3.11.3
