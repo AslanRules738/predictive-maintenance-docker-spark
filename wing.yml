@@ -99,7 +99,7 @@ services:
       KAFKA_ADVERTISED_HOST_NAME: kafka
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_CREATE_TOPICS: "engine-stream:1:1,engine-alert:1:1"
+      KAFKA_CREATE_TOPICS: "engine-stream-1:1:1,engine-stream-1:1:2,engine-stream-1:1:3,engine-stream-1:1:4,engine-stream-1:1:5,engine-stream-1:1:6,engine-stream:1:1,engine-alert:1:1"
     depends_on:
       - zookeeper
 
