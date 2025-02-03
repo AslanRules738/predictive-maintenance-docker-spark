@@ -44,7 +44,7 @@ services:
     volumes:
      - "/home/admin/workspace/England:/media:ro"
     command: >
-      /spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://sparkmaster:7077
+      /spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://54.197.11.207:7077
 
   cassandra:
     image: cassandra:3.11.3
