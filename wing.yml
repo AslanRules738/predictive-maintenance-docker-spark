@@ -1,23 +1,23 @@
 services:
   sparkmaster:
     image: modspark
-    security_opt:
-      - no-new-privileges
+    # security_opt:
+    #   - no-new-privileges
     deploy:
       placement:
         constraints:
           - node.role == manager
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
+      # resources:
+      #   limits:
+      #     cpus: '0.50'
+      #     memory: 512M
+      #   reservations:
+      #     cpus: '0.25'
+      #     memory: 128M
     networks:
      - spark
-    cap_drop:
-     - ALL
+    # cap_drop:
+    #  - ALL
     volumes:
      - "/var/jenkins/workspace/Wales:/media:ro"
     command:
@@ -25,23 +25,23 @@ services:
 
   sparkworker:
     image: modspark
-    security_opt:
-      - no-new-privileges
+    # security_opt:
+    #   - no-new-privileges
     deploy:
       replicas: 4
       placement:
         max_replicas_per_node: 1
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
+      # resources:
+      #   limits:
+      #     cpus: '0.50'
+      #     memory: 512M
+      #   reservations:
+      #     cpus: '0.25'
+      #     memory: 128M
     networks:
      - spark
-    cap_drop:
-     - ALL
+    # cap_drop:
+    #  - ALL
     ports:
      - "8081:8081"
     volumes:
@@ -49,50 +49,50 @@ services:
     command: >
       bin/spark-class org.apache.spark.deploy.worker.Worker spark://sparkmaster:7077
 
-  cassandra:
-    image: cassandra:3.11.3
-    security_opt:
-      - no-new-privileges
-    deploy:
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
-    networks:
-     - spark
-    environment:
-     - CASSANDRA_CLUSTER_NAME=cscie63_cluster
+  #cassandra:
+    #image: cassandra:3.11.3
+    #security_opt:
+    #  - no-new-privileges
+    #deploy:
+    #  resources:
+    #    limits:
+    #      cpus: '0.50'
+    #      memory: 512M
+    #    reservations:
+    #      cpus: '0.25'
+    #      memory: 128M
+    #networks:
+    # - spark
+    #environment:
+    # - CASSANDRA_CLUSTER_NAME=cscie63_cluster
 
   zookeeper:
     image: owlab/zookeeper-arm64
-    security_opt:
-      - no-new-privileges
-    deploy:
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
+    #security_opt:
+    #  - no-new-privileges
+    #deploy:
+    #  resources:
+    #    limits:
+    #      cpus: '0.50'
+    #      memory: 512M
+    #    reservations:
+    #      cpus: '0.25'
+    #      memory: 128M
     networks:
      - spark
 
   kafka:
     image: wurstmeister/kafka
-    security_opt:
-      - no-new-privileges
-    deploy:
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
+    # security_opt:
+    #   - no-new-privileges
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '0.50'
+    #       memory: 512M
+    #     reservations:
+    #       cpus: '0.25'
+    #       memory: 128M
     networks:
       - spark
     environment:
