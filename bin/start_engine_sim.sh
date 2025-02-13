@@ -4,4 +4,4 @@ RPS=$1
 DIR=/media/
 
 echo "rps= $RPS"
-python ${DIR}/kafka/engine_cycle_producer.py kafka:9092 engine-stream -s ${DIR}/data/test_x.csv -r ${RPS}
+python ${DIR}/kafka/engine_cycle_producer.py kafka:9092 engine-stream-1 -s ${DIR}/data/test_x.csv -r ${RPS}
