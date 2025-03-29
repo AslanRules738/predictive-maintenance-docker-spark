@@ -47,17 +47,13 @@ class Predictor:
         alert_df = pred_df.select('id', 'cycle', 'prediction') \
             .filter(F.col('prediction') <= self.config['rulThreshold'])
 
-        if alert_df.count() > 0:
-            alert_df = alert_df.withColumn("input_topic", F.lit(self.config['topic']))
-            alert_df.show()
-
         # Post alerts to kafka topic in the following format:
         #   id,cycle,rul_prediction
         # This data is packaged into a 'value' column that must be cast as a string or binary
         alert_df \
             .select(
                 F.concat(
-                    F.col('id'), F.lit(','), F.col('cycle'), F.lit(','), F.col('prediction'), F.lit(',TOPIC'), F.col('input_topic')
+                    F.col('id'), F.lit(','), F.col('cycle'), F.lit(','), F.col('prediction'), F.lit(',TOPIC'), F.lit(self.config['topic']))
                     ).alias('value')) \
             .selectExpr("CAST(value AS STRING)") \
             .write \
