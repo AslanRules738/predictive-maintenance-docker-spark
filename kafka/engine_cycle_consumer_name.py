@@ -57,7 +57,7 @@ class Predictor:
         alert_df \
             .select(
                 F.concat(
-                    F.col('id'), F.lit(','), F.col('cycle'), F.lit(','), F.col('prediction'), F.lit(','), F.col('input_topic')
+                    F.col('id'), F.lit(','), F.col('cycle'), F.lit(','), F.col('prediction'), F.lit(',TOPIC'), F.col('input_topic')
                     ).alias('value')) \
             .selectExpr("CAST(value AS STRING)") \
             .write \
