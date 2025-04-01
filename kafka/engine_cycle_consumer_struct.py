@@ -1,19 +1,12 @@
-"""
-Usage: engine_cycle_consumer.py <broker_list> <topic>
-
-spark-submit --master local[2] --packages org.apache.spark:spark-sql-kafka-0-10_2.11:2.4.0 --jars spark-streaming-kafka-0-10_2.11-2.4.0.jar kafka/engine_cycle_consumer_struct.py localhost:9092 engine-stream -w 30 -s 30 -r 150
-
-"""
 import sys
 import os
 import argparse
-import datetime
+from datetime import datetime
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.ml.feature import RFormulaModel
 from pyspark.ml.feature import MinMaxScalerModel
 from pyspark.ml.regression import AFTSurvivalRegressionModel
-
 
 ROOT_DIR = os.path.abspath('/media/')
 MODEL_DIR = ROOT_DIR + '/aft/models/'
@@ -23,11 +16,9 @@ import engine_util
 
 DEFAULT_OUTPUT = 'output'
 
-
 class Predictor:
 
     def __init__(self, model_dir, config):
-
         self.config = config
         self.aft_model = AFTSurvivalRegressionModel.load(model_dir+'aft')
         self.formula_model = RFormulaModel.load(model_dir+'formula')
@@ -49,11 +40,9 @@ class Predictor:
             .filter(F.col('prediction') <= self.config['rulThreshold'])
 
         if alert_df.count() > 0:
+            print(f"ALERT! Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             alert_df.show()
 
-        # Post alerts to kafka topic in the following format:
-        #   id,cycle,rul_prediction
-        # This data is packaged into a 'value' column that must be cast as a string or binary
         alert_df \
             .select(
                 F.concat(
@@ -66,20 +55,9 @@ class Predictor:
             .option("topic", self.config['alertTopic']) \
             .save()
 
-        print("Alert sent at " + datetime.datetime.now())
-
         return alert_df
 
-
 def main(broker, topic, config):
-    """Main function that connects a Kafka topic to a Spark engine. Messages are consumed until this script is interrupted.
-
-    Args:
-        broker (str): Broke in host:port format.
-        topic (str): Topic to listen on.
-        config (dict): Configuration stored as name/value.
-    """
-
     spark = SparkSession \
         .builder \
         .appName("engine-stream-consumer") \
@@ -97,7 +75,6 @@ def main(broker, topic, config):
         .load()\
         .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)")
 
-    # Read the stream and perform prediction to see if the RUL threshold is reached.
     pred_ds = ds \
         .writeStream \
         .foreachBatch(predictor.ds_predict) \
@@ -114,7 +91,6 @@ def main(broker, topic, config):
     spark.stop()
     print("Done.")
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("broker", help="host:port of the kafka broker.")
@@ -128,7 +104,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Pass the various durations as config.
     conf = {"broker": args.broker,
             "topic": args.topic,
             "alertTopic": args.alertTopic,
