@@ -27,10 +27,14 @@ class Predictor:
 
         self.schema, self.feature_cols, self.label_cols = engine_util.create_engine_schema()
         self.cn = engine_util.CleanData(self.schema, self.feature_cols)
-
-    def transform_and_predict(self, df):
-        """Transform and predict in one step for real-time processing"""
-        df2 = df.select(F.split('value', ',').alias('value'))
+    
+    def process_batch(self, batch_df, batch_id):
+        """Process each batch of data"""
+        if batch_df.isEmpty():
+            return
+            
+        # Transform the batch data
+        df2 = batch_df.select(F.split('value', ',').alias('value'))
         df_result = df2.select(*[df2['value'][i] for i in range(26)])
 
         cycles_df = self.cn.fit(df_result)
@@ -38,7 +42,28 @@ class Predictor:
         scaled_df = self.scaler_model.transform(prepared_df)
         pred_df = self.aft_model.transform(scaled_df)
 
-        return pred_df.select('id', 'cycle', 'prediction')
+        # Select and filter predictions
+        alert_df = pred_df.select('id', 'cycle', 'prediction') \
+            .filter(F.col('prediction') <= self.config['rulThreshold'])
+            
+        # Write alerts to Kafka if there are any
+        if not alert_df.isEmpty():
+            alert_df \
+                .select(
+                    F.concat(
+                        F.col('id'), F.lit(','), F.col('cycle'), F.lit(','), 
+                        F.col('prediction'), F.lit(',TOPIC'), F.lit(self.config['topic'])
+                    ).alias('value')
+                ) \
+                .selectExpr("CAST(value AS STRING)") \
+                .write \
+                .format("kafka") \
+                .option("kafka.bootstrap.servers", self.config['broker']) \
+                .option("topic", self.config['alertTopic']) \
+                .save()
+                
+        # Print batch information for monitoring
+        print(f"Batch {batch_id}: Processed {batch_df.count()} records, found {alert_df.count()} alerts")
 
 
 def main(broker, topic, config):
@@ -62,52 +87,35 @@ def main(broker, topic, config):
 
     predictor = Predictor(MODEL_DIR, config)
 
-    # Set up the input stream with minimal processing delay
+    # Set up the input stream
     input_stream = spark \
         .readStream \
         .format("kafka") \
         .option("kafka.bootstrap.servers", broker) \
         .option("subscribe", topic) \
         .option("startingOffsets", "latest") \
-        .option("maxOffsetsPerTrigger", 1000) \
+        .option("maxOffsetsPerTrigger", 100) \  # Process 100 records per micro-batch for better responsiveness
         .option("failOnDataLoss", "false") \
         .load() \
         .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)")
 
-    # Process each record as it arrives
-    predicted_df = predictor.transform_and_predict(input_stream)
-    
-    # Filter for alerts based on threshold
-    alert_df = predicted_df.filter(F.col('prediction') <= config['rulThreshold'])
-    
-    # Write alerts to Kafka
-    alert_query = alert_df \
-        .select(
-            F.concat(
-                F.col('id'), F.lit(','), F.col('cycle'), F.lit(','), 
-                F.col('prediction'), F.lit(',TOPIC'), F.lit(config['topic'])
-            ).alias('value')
-        ) \
-        .selectExpr("CAST(value AS STRING)") \
+    # Set up the streaming query using foreachBatch
+    query = input_stream \
         .writeStream \
-        .format("kafka") \
-        .option("kafka.bootstrap.servers", config['broker']) \
-        .option("topic", config['alertTopic']) \
-        .option("checkpointLocation", config['outputDirectory'] + "/checkpoints/alerts") \
-        .trigger(processingTime='1 second') \
-        .outputMode("append") \
+        .foreachBatch(predictor.process_batch) \
+        .option("checkpointLocation", config['outputDirectory'] + "/checkpoints/main") \
+        .trigger(processingTime='1 second') \  # Process every second
         .start()
     
-    # Also log to console for monitoring
-    console_query = predicted_df \
+    # Also log raw data to console for monitoring
+    console_query = input_stream \
         .writeStream \
         .format("console") \
         .option("truncate", False) \
-        .trigger(processingTime='1 second') \
-        .outputMode("append") \
+        .trigger(processingTime='5 seconds') \  # Update console every 5 seconds to avoid too much output
         .start()
     
-    # Wait for termination
+    # Wait for termination of any stream
     spark.streams.awaitAnyTermination()
     
     spark.stop()
