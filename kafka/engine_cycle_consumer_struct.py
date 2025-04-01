@@ -40,7 +40,7 @@ class Predictor:
             .filter(F.col('prediction') <= self.config['rulThreshold'])
 
         if alert_df.count() > 0:
-            print(f"ALERT! Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"\n\n\n\nALERT! Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             alert_df.show()
 
         alert_df \
