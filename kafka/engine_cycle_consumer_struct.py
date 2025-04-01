@@ -104,7 +104,7 @@ def main(broker, topic, config):
         .writeStream \
         .foreachBatch(predictor.process_batch) \
         .option("checkpointLocation", config['outputDirectory'] + "/checkpoints/main") \
-        .trigger(processingTime='1 second') \  # Process every second
+        .trigger(processingTime='1 second') \
         .start()
     
     # Also log raw data to console for monitoring
