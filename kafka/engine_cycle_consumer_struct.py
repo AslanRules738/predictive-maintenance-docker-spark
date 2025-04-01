@@ -7,6 +7,7 @@ spark-submit --master local[2] --packages org.apache.spark:spark-sql-kafka-0-10_
 import sys
 import os
 import argparse
+import datetime
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.ml.feature import RFormulaModel
@@ -64,6 +65,8 @@ class Predictor:
             .option("kafka.bootstrap.servers", self.config['broker']) \
             .option("topic", self.config['alertTopic']) \
             .save()
+
+        print("Alert sent at " + datetime.datetime.now())
 
         return alert_df
 
