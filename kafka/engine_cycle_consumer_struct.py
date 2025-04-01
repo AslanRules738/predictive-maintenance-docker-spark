@@ -1,12 +1,12 @@
 import sys
 import os
 import argparse
-from datetime import datetime
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.ml.feature import RFormulaModel
 from pyspark.ml.feature import MinMaxScalerModel
 from pyspark.ml.regression import AFTSurvivalRegressionModel
+
 
 ROOT_DIR = os.path.abspath('/media/')
 MODEL_DIR = ROOT_DIR + '/aft/models/'
@@ -15,6 +15,7 @@ sys.path.append(ROOT_DIR)
 import engine_util
 
 DEFAULT_OUTPUT = 'output'
+
 
 class Predictor:
 
@@ -27,9 +28,8 @@ class Predictor:
         self.schema, self.feature_cols, self.label_cols = engine_util.create_engine_schema()
         self.cn = engine_util.CleanData(self.schema, self.feature_cols)
 
-    def ds_predict(self, df, epoch_id):
-        print(f"\n\nPROCESS at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
+    def transform_and_predict(self, df):
+        """Transform and predict in one step for real-time processing"""
         df2 = df.select(F.split('value', ',').alias('value'))
         df_result = df2.select(*[df2['value'][i] for i in range(26)])
 
@@ -38,89 +38,102 @@ class Predictor:
         scaled_df = self.scaler_model.transform(prepared_df)
         pred_df = self.aft_model.transform(scaled_df)
 
-        alert_df = pred_df.select('id', 'cycle', 'prediction') \
-            .filter(F.col('prediction') <= self.config['rulThreshold'])
+        return pred_df.select('id', 'cycle', 'prediction')
 
-        if alert_df.count() > 0:
-            print(f"\n\n\n\nALERT! Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            alert_df.show()
-
-        alert_df \
-            .select(
-                F.concat(
-                    F.col('id'), F.lit(','), F.col('cycle'), F.lit(','), F.col('prediction')
-                    ).alias('value')) \
-            .selectExpr("CAST(value AS STRING)") \
-            .write \
-            .format("kafka") \
-            .option("kafka.bootstrap.servers", self.config['broker']) \
-            .option("topic", self.config['alertTopic']) \
-            .save()
-
-        return alert_df
 
 def main(broker, topic, config):
+    """Main function that connects a Kafka topic to a Spark engine for real-time processing.
+
+    Args:
+        broker (str): Broker in host:port format.
+        topic (str): Topic to listen on.
+        config (dict): Configuration stored as name/value.
+    """
+
     spark = SparkSession \
         .builder \
-        .appName("engine-stream-consumer") \
-        .master("local[2]") \
+        .appName("engine-stream-consumer-realtime") \
+        .master("local[*]") \
+        .config("spark.streaming.kafka.consumer.cache.enabled", "false") \
+        .config("spark.streaming.stopGracefullyOnShutdown", "true") \
+        .config("spark.sql.streaming.minBatchesToRetain", "10") \
+        .config("spark.sql.streaming.pollingDelay", "10ms") \
         .getOrCreate()
-
-    spark.sparkContext.setLogLevel("WARN")  # or "ERROR"
 
     predictor = Predictor(MODEL_DIR, config)
 
-    ds = spark \
+    # Set up the input stream with minimal processing delay
+    input_stream = spark \
         .readStream \
         .format("kafka") \
         .option("kafka.bootstrap.servers", broker) \
         .option("subscribe", topic) \
         .option("startingOffsets", "latest") \
-        .load()\
+        .option("maxOffsetsPerTrigger", 1000) \
+        .option("failOnDataLoss", "false") \
+        .load() \
         .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)")
 
-    pred_ds = ds \
-        .writeStream \
-        .foreachBatch(predictor.ds_predict) \
-        .start()
-
-    trans = ds \
+    # Process each record as it arrives
+    predicted_df = predictor.transform_and_predict(input_stream)
+    
+    # Filter for alerts based on threshold
+    alert_df = predicted_df.filter(F.col('prediction') <= config['rulThreshold'])
+    
+    # Write alerts to Kafka
+    alert_query = alert_df \
+        .select(
+            F.concat(
+                F.col('id'), F.lit(','), F.col('cycle'), F.lit(','), 
+                F.col('prediction'), F.lit(',TOPIC'), F.lit(config['topic'])
+            ).alias('value')
+        ) \
         .selectExpr("CAST(value AS STRING)") \
         .writeStream \
-        .format("console") \
+        .format("kafka") \
+        .option("kafka.bootstrap.servers", config['broker']) \
+        .option("topic", config['alertTopic']) \
+        .option("checkpointLocation", config['outputDirectory'] + "/checkpoints/alerts") \
+        .trigger(processingTime='1 second') \
+        .outputMode("append") \
         .start()
-
-    trans.awaitTermination()
-
+    
+    # Also log to console for monitoring
+    console_query = predicted_df \
+        .writeStream \
+        .format("console") \
+        .option("truncate", False) \
+        .trigger(processingTime='1 second') \
+        .outputMode("append") \
+        .start()
+    
+    # Wait for termination
+    spark.streams.awaitAnyTermination()
+    
     spark.stop()
     print("Done.")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("broker", help="host:port of the kafka broker.")
     parser.add_argument("topic", help="Topic to monitor.", default="engine-stream")
     parser.add_argument("alertTopic", help="Topic to send alerts to.", default="engine-alert")
-    parser.add_argument("-b", "--batchDuration", help="Batch duration in seconds", default=30)
-    parser.add_argument("-w", "--windowDuration", help="Window size", default=60)
-    parser.add_argument("-s", "--slideDuration", help="sliding", default=60)
     parser.add_argument("-o", "--outputDirectory", help="Output directory", default=DEFAULT_OUTPUT)
     parser.add_argument("-r", "--rulThreshold", help="The predicted RUL to alert on", default=30)
 
     args = parser.parse_args()
 
-    conf = {"broker": args.broker,
-            "topic": args.topic,
-            "alertTopic": args.alertTopic,
-            "batchDuration": int(args.batchDuration),
-            "windowDuration": int(args.windowDuration),
-            "slideDuration": int(args.slideDuration),
-            "outputDirectory": args.outputDirectory,
-            "rulThreshold": int(args.rulThreshold)
-        }
+    # Simplified config for real-time processing
+    conf = {
+        "broker": args.broker,
+        "topic": args.topic,
+        "alertTopic": args.alertTopic,
+        "outputDirectory": args.outputDirectory,
+        "rulThreshold": int(args.rulThreshold)
+    }
 
-    print("Broker={}, Monitoring Topic={}, Alert Topic={}"
-          .format(args.broker, args.topic, args.alertTopic))
-
+    print("Broker={}, Monitoring Topic={}, Alert Topic={}".format(args.broker, args.topic, args.alertTopic))
     print("Configuration: ", conf)
 
     main(args.broker, args.topic, conf)
