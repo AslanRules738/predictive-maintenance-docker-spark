@@ -30,40 +30,49 @@ class Predictor:
     
     def process_batch(self, batch_df, batch_id):
         """Process each batch of data"""
-        if batch_df.isEmpty():
+        # Check if DataFrame is empty using count
+        if batch_df.count() == 0:
+            print(f"Batch {batch_id}: No records to process")
             return
             
-        # Transform the batch data
-        df2 = batch_df.select(F.split('value', ',').alias('value'))
-        df_result = df2.select(*[df2['value'][i] for i in range(26)])
+        try:
+            # Transform the batch data
+            df2 = batch_df.select(F.split('value', ',').alias('value'))
+            df_result = df2.select(*[df2['value'][i] for i in range(26)])
 
-        cycles_df = self.cn.fit(df_result)
-        prepared_df = self.formula_model.transform(cycles_df)
-        scaled_df = self.scaler_model.transform(prepared_df)
-        pred_df = self.aft_model.transform(scaled_df)
+            cycles_df = self.cn.fit(df_result)
+            prepared_df = self.formula_model.transform(cycles_df)
+            scaled_df = self.scaler_model.transform(prepared_df)
+            pred_df = self.aft_model.transform(scaled_df)
 
-        # Select and filter predictions
-        alert_df = pred_df.select('id', 'cycle', 'prediction') \
-            .filter(F.col('prediction') <= self.config['rulThreshold'])
+            # Select and filter predictions
+            alert_df = pred_df.select('id', 'cycle', 'prediction') \
+                .filter(F.col('prediction') <= self.config['rulThreshold'])
             
-        # Write alerts to Kafka if there are any
-        if not alert_df.isEmpty():
-            alert_df \
-                .select(
-                    F.concat(
-                        F.col('id'), F.lit(','), F.col('cycle'), F.lit(','), 
-                        F.col('prediction'), F.lit(',TOPIC'), F.lit(self.config['topic'])
-                    ).alias('value')
-                ) \
-                .selectExpr("CAST(value AS STRING)") \
-                .write \
-                .format("kafka") \
-                .option("kafka.bootstrap.servers", self.config['broker']) \
-                .option("topic", self.config['alertTopic']) \
-                .save()
+            alert_count = alert_df.count()
                 
-        # Print batch information for monitoring
-        print(f"Batch {batch_id}: Processed {batch_df.count()} records, found {alert_df.count()} alerts")
+            # Write alerts to Kafka if there are any
+            if alert_count > 0:
+                alert_df \
+                    .select(
+                        F.concat(
+                            F.col('id'), F.lit(','), F.col('cycle'), F.lit(','), 
+                            F.col('prediction'), F.lit(',TOPIC'), F.lit(self.config['topic'])
+                        ).alias('value')
+                    ) \
+                    .selectExpr("CAST(value AS STRING)") \
+                    .write \
+                    .format("kafka") \
+                    .option("kafka.bootstrap.servers", self.config['broker']) \
+                    .option("topic", self.config['alertTopic']) \
+                    .save()
+                    
+            # Print batch information for monitoring
+            batch_count = batch_df.count()
+            print(f"Batch {batch_id}: Processed {batch_count} records, found {alert_count} alerts")
+            
+        except Exception as e:
+            print(f"Error processing batch {batch_id}: {str(e)}")
 
 
 def main(broker, topic, config):
