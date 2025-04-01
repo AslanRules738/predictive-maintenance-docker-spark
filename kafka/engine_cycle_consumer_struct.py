@@ -28,6 +28,8 @@ class Predictor:
         self.cn = engine_util.CleanData(self.schema, self.feature_cols)
 
     def ds_predict(self, df, epoch_id):
+        print(f"\n\nPROCESS at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
         df2 = df.select(F.split('value', ',').alias('value'))
         df_result = df2.select(*[df2['value'][i] for i in range(26)])
 
