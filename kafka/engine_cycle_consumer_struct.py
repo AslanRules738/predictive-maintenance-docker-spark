@@ -94,7 +94,7 @@ def main(broker, topic, config):
         .option("kafka.bootstrap.servers", broker) \
         .option("subscribe", topic) \
         .option("startingOffsets", "latest") \
-        .option("maxOffsetsPerTrigger", 100) \  # Process 100 records per micro-batch for better responsiveness
+        .option("maxOffsetsPerTrigger", 100) \
         .option("failOnDataLoss", "false") \
         .load() \
         .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)")
@@ -112,7 +112,7 @@ def main(broker, topic, config):
         .writeStream \
         .format("console") \
         .option("truncate", False) \
-        .trigger(processingTime='5 seconds') \  # Update console every 5 seconds to avoid too much output
+        .trigger(processingTime='5 seconds') \
         .start()
     
     # Wait for termination of any stream
