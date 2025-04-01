@@ -64,6 +64,8 @@ def main(broker, topic, config):
         .master("local[2]") \
         .getOrCreate()
 
+    spark.sparkContext.setLogLevel("WARN")  # or "ERROR"
+
     predictor = Predictor(MODEL_DIR, config)
 
     ds = spark \
