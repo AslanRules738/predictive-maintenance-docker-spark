@@ -1,9 +1,3 @@
-"""
-Usage: engine_cycle_consumer.py <broker_list> <topic>
-
-spark-submit --master local[2] --packages org.apache.spark:spark-sql-kafka-0-10_2.11:2.4.0 --jars spark-streaming-kafka-0-10_2.11-2.4.0.jar kafka/engine_cycle_consumer_struct.py localhost:9092 engine-stream -w 30 -s 30 -r 150
-
-"""
 import sys
 import os
 import argparse
@@ -26,7 +20,6 @@ DEFAULT_OUTPUT = 'output'
 class Predictor:
 
     def __init__(self, model_dir, config):
-
         self.config = config
         self.aft_model = AFTSurvivalRegressionModel.load(model_dir+'aft')
         self.formula_model = RFormulaModel.load(model_dir+'formula')
@@ -34,80 +27,106 @@ class Predictor:
 
         self.schema, self.feature_cols, self.label_cols = engine_util.create_engine_schema()
         self.cn = engine_util.CleanData(self.schema, self.feature_cols)
+    
+    def process_batch(self, batch_df, batch_id):
+        """Process each batch of data"""
+        # Check if DataFrame is empty using count
+        if batch_df.count() == 0:
+            print(f"Batch {batch_id}: No records to process")
+            return
+            
+        try:
+            # Transform the batch data
+            df2 = batch_df.select(F.split('value', ',').alias('value'))
+            df_result = df2.select(*[df2['value'][i] for i in range(26)])
 
-    def ds_predict(self, df, epoch_id):
-        df2 = df.select(F.split('value', ',').alias('value'))
-        df_result = df2.select(*[df2['value'][i] for i in range(26)])
+            cycles_df = self.cn.fit(df_result)
+            prepared_df = self.formula_model.transform(cycles_df)
+            scaled_df = self.scaler_model.transform(prepared_df)
+            pred_df = self.aft_model.transform(scaled_df)
 
-        cycles_df = self.cn.fit(df_result)
-        prepared_df = self.formula_model.transform(cycles_df)
-        scaled_df = self.scaler_model.transform(prepared_df)
-        pred_df = self.aft_model.transform(scaled_df)
-
-        alert_df = pred_df.select('id', 'cycle', 'prediction') \
-            .filter(F.col('prediction') <= self.config['rulThreshold'])
-
-        if alert_df.count() > 0:
-            alert_df.show()
-
-        # Post alerts to kafka topic in the following format:
-        #   id,cycle,rul_prediction
-        # This data is packaged into a 'value' column that must be cast as a string or binary
-        alert_df \
-            .select(
-                F.concat(
-                    F.col('id'), F.lit(','), F.col('cycle'), F.lit(','), F.col('prediction')
-                    ).alias('value')) \
-            .selectExpr("CAST(value AS STRING)") \
-            .write \
-            .format("kafka") \
-            .option("kafka.bootstrap.servers", self.config['broker']) \
-            .option("topic", self.config['alertTopic']) \
-            .save()
-
-        return alert_df
+            # Select and filter predictions
+            alert_df = pred_df.select('id', 'cycle', 'prediction') \
+                .filter(F.col('prediction') <= self.config['rulThreshold'])
+            
+            alert_count = alert_df.count()
+                
+            # Write alerts to Kafka if there are any
+            if alert_count > 0:
+                alert_df \
+                    .select(
+                        F.concat(
+                            F.col('id'), F.lit(','), F.col('cycle'), F.lit(','), 
+                            F.col('prediction'), F.lit(',TOPIC'), F.lit(self.config['topic'])
+                        ).alias('value')
+                    ) \
+                    .selectExpr("CAST(value AS STRING)") \
+                    .write \
+                    .format("kafka") \
+                    .option("kafka.bootstrap.servers", self.config['broker']) \
+                    .option("topic", self.config['alertTopic']) \
+                    .save()
+                    
+            # Print batch information for monitoring
+            batch_count = batch_df.count()
+            print(f"Batch {batch_id}: Processed {batch_count} records, found {alert_count} alerts")
+            
+        except Exception as e:
+            print(f"Error processing batch {batch_id}: {str(e)}")
 
 
 def main(broker, topic, config):
-    """Main function that connects a Kafka topic to a Spark engine. Messages are consumed until this script is interrupted.
+    """Main function that connects a Kafka topic to a Spark engine for real-time processing.
 
     Args:
-        broker (str): Broke in host:port format.
+        broker (str): Broker in host:port format.
         topic (str): Topic to listen on.
         config (dict): Configuration stored as name/value.
     """
 
     spark = SparkSession \
         .builder \
-        .appName("engine-stream-consumer") \
-        .master("local[2]") \
+        .appName("engine-stream-consumer-realtime") \
+        .master("local[*]") \
+        .config("spark.streaming.kafka.consumer.cache.enabled", "false") \
+        .config("spark.streaming.stopGracefullyOnShutdown", "true") \
+        .config("spark.sql.streaming.minBatchesToRetain", "10") \
+        .config("spark.sql.streaming.pollingDelay", "10ms") \
         .getOrCreate()
 
     predictor = Predictor(MODEL_DIR, config)
 
-    ds = spark \
+    # Set up the input stream
+    input_stream = spark \
         .readStream \
         .format("kafka") \
         .option("kafka.bootstrap.servers", broker) \
         .option("subscribe", topic) \
         .option("startingOffsets", "latest") \
-        .load()\
+        .option("maxOffsetsPerTrigger", 100) \
+        .option("failOnDataLoss", "false") \
+        .load() \
         .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)")
 
-    # Read the stream and perform prediction to see if the RUL threshold is reached.
-    pred_ds = ds \
+    # Set up the streaming query using foreachBatch
+    query = input_stream \
         .writeStream \
-        .foreachBatch(predictor.ds_predict) \
+        .foreachBatch(predictor.process_batch) \
+        .option("checkpointLocation", config['outputDirectory'] + "/checkpoints/main") \
+        .trigger(processingTime='1 second') \
         .start()
-
-    trans = ds \
-        .selectExpr("CAST(value AS STRING)") \
+    
+    # Also log raw data to console for monitoring
+    console_query = input_stream \
         .writeStream \
         .format("console") \
+        .option("truncate", False) \
+        .trigger(processingTime='5 seconds') \
         .start()
-
-    trans.awaitTermination()
-
+    
+    # Wait for termination of any stream
+    spark.streams.awaitAnyTermination()
+    
     spark.stop()
     print("Done.")
 
@@ -117,28 +136,21 @@ if __name__ == "__main__":
     parser.add_argument("broker", help="host:port of the kafka broker.")
     parser.add_argument("topic", help="Topic to monitor.", default="engine-stream")
     parser.add_argument("alertTopic", help="Topic to send alerts to.", default="engine-alert")
-    parser.add_argument("-b", "--batchDuration", help="Batch duration in seconds", default=30)
-    parser.add_argument("-w", "--windowDuration", help="Window size", default=60)
-    parser.add_argument("-s", "--slideDuration", help="sliding", default=60)
     parser.add_argument("-o", "--outputDirectory", help="Output directory", default=DEFAULT_OUTPUT)
     parser.add_argument("-r", "--rulThreshold", help="The predicted RUL to alert on", default=30)
 
     args = parser.parse_args()
 
-    # Pass the various durations as config.
-    conf = {"broker": args.broker,
-            "topic": args.topic,
-            "alertTopic": args.alertTopic,
-            "batchDuration": int(args.batchDuration),
-            "windowDuration": int(args.windowDuration),
-            "slideDuration": int(args.slideDuration),
-            "outputDirectory": args.outputDirectory,
-            "rulThreshold": int(args.rulThreshold)
-        }
+    # Simplified config for real-time processing
+    conf = {
+        "broker": args.broker,
+        "topic": args.topic,
+        "alertTopic": args.alertTopic,
+        "outputDirectory": args.outputDirectory,
+        "rulThreshold": int(args.rulThreshold)
+    }
 
-    print("Broker={}, Monitoring Topic={}, Alert Topic={}"
-          .format(args.broker, args.topic, args.alertTopic))
-
+    print("Broker={}, Monitoring Topic={}, Alert Topic={}".format(args.broker, args.topic, args.alertTopic))
     print("Configuration: ", conf)
 
     main(args.broker, args.topic, conf)
